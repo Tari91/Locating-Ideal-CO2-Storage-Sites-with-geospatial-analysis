@@ -1,0 +1,76 @@
+import geopandas as gpd
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+from shapely.geometry import Point, Polygon
+
+# Create synthetic study area (bounding box)
+study_area = Polygon([(-100, 30), (-100, 40), (-90, 40), (-90, 30)])
+
+# Generate synthetic geological formations (some suitable, some not)
+geological_polygons = [
+    Polygon([(-99, 31), (-99, 33), (-97, 33), (-97, 31)]),  # Suitable
+    Polygon([(-95, 35), (-95, 37), (-93, 37), (-93, 35)]),  # Not suitable
+    Polygon([(-98, 36), (-98, 38), (-96, 38), (-96, 36)])   # Suitable
+]
+
+geology_types = ['suitable', 'unsuitable', 'suitable']
+
+geology_gdf = gpd.GeoDataFrame({
+    'geology': geology_types
+}, geometry=geological_polygons, crs="EPSG:4326")
+
+# Simulate groundwater sensitivity layer (points with a 'sensitivity' score)
+np.random.seed(0)
+num_points = 50
+groundwater_points = [
+    Point(np.random.uniform(-99, -91), np.random.uniform(31, 39)) 
+    for _ in range(num_points)
+]
+sensitivity_scores = np.random.rand(num_points)
+
+groundwater_gdf = gpd.GeoDataFrame({
+    'sensitivity': sensitivity_scores
+}, geometry=groundwater_points, crs="EPSG:4326")
+
+# Simulate populated areas as circular buffers around points
+pop_centers = [Point(-94, 32), Point(-92, 38)]
+populated_buffers = [center.buffer(1.5) for center in pop_centers]
+
+populated_gdf = gpd.GeoDataFrame({
+    'populated': ['yes', 'yes']
+}, geometry=populated_buffers, crs="EPSG:4326")
+
+# Filter step 1: Only select geological formations marked as suitable
+suitable_geology = geology_gdf[geology_gdf['geology'] == 'suitable']
+
+# Filter step 2: Remove areas with high groundwater sensitivity
+low_sensitivity_areas = groundwater_gdf[groundwater_gdf['sensitivity'] < 0.6]
+
+# Filter step 3: Exclude areas within populated buffers
+# (buffer_union is a single geometry of all populated buffers combined)
+buffer_union = populated_gdf.unary_union
+candidate_sites = suitable_geology[~suitable_geology.intersects(buffer_union)]
+
+# Optional depth filtering (synthetic depths)
+candidate_sites['depth_m'] = [1200, 1500]  # Assume depths in meters
+candidate_sites = candidate_sites[candidate_sites['depth_m'] >= 1000]
+
+# Final Output
+print("Candidate Sites for CO₂ Storage:")
+print(candidate_sites)
+
+# Plotting the results
+fig, ax = plt.subplots(figsize=(10, 8))
+gpd.GeoSeries(study_area).boundary.plot(ax=ax, color='black', label="Study Area")
+geology_gdf.plot(ax=ax, column='geology', cmap='coolwarm', alpha=0.4, legend=True)
+low_sensitivity_areas.plot(ax=ax, color='blue', label="Low GW Sensitivity")
+populated_gdf.plot(ax=ax, color='red', alpha=0.3, label="Populated Buffers")
+candidate_sites.plot(ax=ax, color='green', edgecolor='black', label="Ideal Sites")
+
+plt.legend()
+plt.title("Synthetic CO₂ Storage Suitability Map")
+plt.xlabel("Longitude")
+plt.ylabel("Latitude")
+plt.grid(True)
+plt.show()
